@@ -3,6 +3,7 @@ from load_data import *
 import keras
 import tensorflow as tf
 import numpy as np
+from tqdm import tqdm
 
 # NeRF model
 class NeRF(keras.Model):
@@ -11,8 +12,8 @@ class NeRF(keras.Model):
         super(NeRF, self).__init__()
         self.embedded_x_dim = embedded_x_dim
         self.embedded_d_dim = embedded_d_dim
-        self.gamma_x = embedded_x_dim * 3 * 2 # 3 dimensional, taylor expansion (sin, cos)
-        self.gamma_d = embedded_d_dim * 3 * 2
+        self.gamma_x = embedded_x_dim * 3 # 3 dimensional, taylor expansion (sin, cos)
+        self.gamma_d = embedded_d_dim * 3
         self.block1 = keras.Sequential(
             [ keras.layers.Input(shape=(self.gamma_x,)) ] + [ keras.layers.Dense(256, activation='relu') for i in range(4) ]
         )
@@ -62,21 +63,17 @@ def accumulated_transmittance(alphas):
 def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
     '''Render image based on camera ray origins and ray directions'''
     # Sample points along rays, linear space between hn and hf
-    t = tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1]) # expand to match the number of rays
-    # t = tf.repeat(tf.linspace(hn, hf, nb_bins)[None, :], ray_origins.shape[0], axis=0) # effectively equivalent to above
-
-    # Random perturbation
-    # mid = (t[:, :-1] + t[:, 1:]) / 2.
-    # lower = tf.concat([t[:, :1], mid], axis=-1)
-    # upper = tf.concat([mid, t[:, -1:]], axis=-1)
-    # u = tf.random.uniform(tf.shape(t))
+    t = tf.cast(tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1]), dtype=tf.dtypes.float32) # expand to match the number of rays
+    
     # Get lower and upper bounds for each bin
-    lower, upper = t[:,:-1], t[:,1:]
-    u = tf.random.uniform(tf.shape(lower)) # lower = upper
+    mid = (t[:, :-1] + t[:, 1:]) / 2.
+    lower = tf.concat([t[:, :1], mid], axis=-1)
+    upper = tf.concat([mid, t[:, -1:]], axis=-1)
+    u = tf.random.uniform(tf.shape(t))   
     t = lower + (upper - lower) * u # parametric representation
 
     # Delta for transmittance calculation
-    const = tf.repeat(tf.constant([1e10])[None, :], ray_origins.shape[0], axis=0)
+    const = tf.repeat(tf.constant([1e10], dtype=tf.dtypes.float32)[None, :], ray_origins.shape[0], axis=0)
     delta = tf.concat([t[:, 1:] - t[:, :-1], const], axis=-1)
 
     # Compute 3D points along each ray
@@ -84,7 +81,7 @@ def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
     ray_directions = tf.repeat(ray_directions[:, None, :], nb_bins, axis=1) # resize for batching
 
     # Model Prediction
-    colors, sigma = nerf_model([tf.reshape(x, [-1, 3]), tf.reshape(ray_directions, [-1, 3])])
+    colors, sigma = nerf_model(tf.reshape(x, [-1, 3]), tf.reshape(ray_directions, [-1, 3]))
     colors = tf.reshape(colors, tf.shape(x))
     sigma = tf.reshape(sigma, tf.shape(x)[:-1])
 
@@ -99,6 +96,52 @@ def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
 
     return c + (1 - tf.expand_dims(weight_sum, -1))
 
+def train(nerf_model, optimizer, data, epochs=int(1e5), hn=0, hf=1, nb_bins=192, H=400, W=400):
+    # Clear log file
+    with open('log.txt', 'w') as log_file:
+        log_file.write('')
+
+    training_loss = []
+    for i in range(epochs):
+        for batch in tqdm(data, desc='Epoch ' + str(i), ncols=100):
+            ray_origins = batch[:, :3]
+            ray_directions = batch[:, 3:6]
+            y = batch[:, 6:] # ground truth
+
+            # Record forward pass with tape
+            with tf.GradientTape() as tape:
+                logits = render(nerf_model, ray_origins, ray_directions, hn=hn, hf=hf, nb_bins=nb_bins)
+                loss = tf.math.reduce_sum((y - logits) ** 2)
+            
+            # Compute and apply gradients
+            grads = tape.gradient(loss, nerf_model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            # Output loss to logfile
+            with open('log.txt', 'a') as log_file:
+                log_file.write(str(loss.numpy()) + '\n')
+        
+        training_loss.append(loss)
+        model.save('nuthin.keras')
+
+    log_file.close()
+    return training_loss
 
 if __name__ == '__main__':
+    # Deine Constants
+    EPOCHS = 5
+    BATCH_SIZE = 1024
+    LEARNING_RATE = 1e-5
+
+    # Load data
+    train_dataset = np.load('training_data.pkl', allow_pickle=True)
+    train_dataset = tf.data.Dataset.from_tensor_slices(train_dataset).shuffle(BATCH_SIZE).batch(BATCH_SIZE)
+
+    # test_dataset = np.load('testing_data.pkl', allow_pickle=True)
+    # test_dataset = tf.data.Dataset.from_tensor_slices(test_dataset).shuffle(BATCH_SIZE).batch(BATCH_SIZE)
+    
+    # Create and train model
     model = NeRF()
+    train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
+
+
