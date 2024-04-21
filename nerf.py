@@ -1,5 +1,6 @@
 from load_data import *
-import tensorflow.keras as keras
+# import tensorflow.keras as keras
+import keras
 import tensorflow as tf
 import numpy as np
 
@@ -33,6 +34,7 @@ class NeRF(keras.Model):
 
     @staticmethod
     def positional_encoding(pos, L):
+        '''Encode ray to sinusoidal harmonics'''
         result = []
         for i in range(L//2):
             result.append(tf.sin(2**i * pos))
@@ -50,39 +52,39 @@ class NeRF(keras.Model):
         color = self.output2(z)
         return color, sigma
 
-    def render(self, ray_origins, ray_directions):
-        '''Render image based on camera ray origins and ray directions'''
-
 def accumulated_transmittance(alphas):
+    '''Compute accumulated transmittance'''
     transmittance = tf.math.cumprod(alphas, axis=1, exclusive=True)
     ones = tf.ones([tf.shape(transmittance)[0], 1], dtype = alphas.dtype)
     return tf.concat([ones, transmittance[:, :-1]], axis=-1)
 
 
 def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
-    
+    '''Render image based on camera ray origins and ray directions'''
     # Sample points along rays, linear space between hn and hf
     t = tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1]) # expand to match the number of rays
     # t = tf.repeat(tf.linspace(hn, hf, nb_bins)[None, :], ray_origins.shape[0], axis=0) # effectively equivalent to above
 
     # Random perturbation
-    mid = (t[:, :-1] + t[:, 1:]) / 2.
-    lower = tf.concat([t[:, :1], mid], axis=-1)
-    upper = tf.concat([mid, t[:, -1:]], axis=-1)
-    u = tf.random.uniform(tf.shape(t))
-    t = lower + (upper - lower) * u 
+    # mid = (t[:, :-1] + t[:, 1:]) / 2.
+    # lower = tf.concat([t[:, :1], mid], axis=-1)
+    # upper = tf.concat([mid, t[:, -1:]], axis=-1)
+    # u = tf.random.uniform(tf.shape(t))
+    # Get lower and upper bounds for each bin
+    lower, upper = t[:,:-1], t[:,1:]
+    u = tf.random.uniform(tf.shape(lower)) # lower = upper
+    t = lower + (upper - lower) * u # parametric representation
 
     # Delta for transmittance calculation
     const = tf.repeat(tf.constant([1e10])[None, :], ray_origins.shape[0], axis=0)
     delta = tf.concat([t[:, 1:] - t[:, :-1], const], axis=-1)
 
     # Compute 3D points along each ray
-    # x = tf.expand_dims(ray_origins, 1) + tf.expand_dims(t, 2) * tf.expand_dims(ray_directions, 1) # in case below doesn't work
-    x = ray_origins[:, None, :] + t[:, :, None] * ray_directions[:, None, :]
-    ray_dirs = tf.repeat(ray_directions[:, None, :], nb_bins, axis=1)
+    x = ray_origins[:, None, :] + t[:, :, None] * ray_directions[:, None, :] # sampled point
+    ray_directions = tf.repeat(ray_directions[:, None, :], nb_bins, axis=1) # resize for batching
 
     # Model Prediction
-    colors, sigma = nerf_model([tf.reshape(x, [-1, 3]), tf.reshape(ray_dirs, [-1, 3])])
+    colors, sigma = nerf_model([tf.reshape(x, [-1, 3]), tf.reshape(ray_directions, [-1, 3])])
     colors = tf.reshape(colors, tf.shape(x))
     sigma = tf.reshape(sigma, tf.shape(x)[:-1])
 
