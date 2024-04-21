@@ -98,7 +98,7 @@ def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
 
 def train(nerf_model, optimizer, data, epochs=int(1e5), hn=0, hf=1, nb_bins=192, H=400, W=400):
     # Clear log file
-    with open('log.txt', 'w') as log_file:
+    with open('logs/log.txt', 'w') as log_file:
         log_file.write('')
 
     training_loss = []
@@ -134,7 +134,7 @@ if __name__ == '__main__':
     LEARNING_RATE = 1e-5
 
     # Load data
-    train_dataset = np.load('training_data.pkl', allow_pickle=True)
+    train_dataset = np.load('parsed_data/training_data.pkl', allow_pickle=True)
     train_dataset = tf.data.Dataset.from_tensor_slices(train_dataset).shuffle(BATCH_SIZE).batch(BATCH_SIZE)
 
     # test_dataset = np.load('testing_data.pkl', allow_pickle=True)

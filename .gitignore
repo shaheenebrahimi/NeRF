@@ -1,4 +1,6 @@
 # Custom
+logs/
+parsed_data/
 training_data.pkl
 testing_data.pkl
 log.txt
