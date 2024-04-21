@@ -32,13 +32,12 @@ class NeRF(keras.Model):
         ])
 
     @staticmethod
-    def positional_encoding(p, L):
-        '''p: input, L: output dimensionality'''
-        embedding = np.zeros(shape=(2*L,))
-        for i in range(L):
-            embedding[2*i] = np.sin(2**i * np.pi * p)
-            embedding[2*i + 1] = np.cos(2**i * np.pi * p)
-        return tf.convert_to_tensor(embedding)
+    def positional_encoding(pos, L):
+        result = []
+        for i in range(L//2):
+            result.append(tf.sin(2**i * pos))
+            result.append(tf.cos(2**i * pos))
+        return tf.concat(result, axis=-1)
     
     def call(self, x, d):
         '''Forward propagation call'''
