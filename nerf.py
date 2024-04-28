@@ -1,15 +1,16 @@
 from load_data import *
+# import tensorflow.keras as keras
 import keras
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 
 # NeRF model
-@keras.saving.register_keras_serializable()
 class NeRF(keras.Model):
-    def __init__(self, embedded_x_dim=10, embedded_d_dim=4,*args,**kwargs):
+    def __init__(self, embedded_x_dim=10, embedded_d_dim=4):
         '''Initialize network'''
-        super(NeRF, self).__init__(*args, **kwargs)
+        super(NeRF, self).__init__()
         self.embedded_x_dim = embedded_x_dim
         self.embedded_d_dim = embedded_d_dim
         self.gamma_x = embedded_x_dim * 3 # 3 dimensional, taylor expansion (sin, cos)
@@ -42,16 +43,6 @@ class NeRF(keras.Model):
             result.append(tf.cos(2**i * pos))
         return tf.concat(result, axis=-1)
     
-    def get_config(self):
-        config = super(NeRF, self).get_config()
-        config.update({'embedded_x_dim': self.embedded_x_dim,
-                       'embedded_d_dim': self.embedded_d_dim})
-        return config
-    
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
-
     def call(self, x, d):
         '''Forward propagation call'''
         embedded_x = self.positional_encoding(x, self.embedded_x_dim)
@@ -70,12 +61,11 @@ def accumulated_transmittance(alphas):
     return tf.concat([ones, transmittance[:, :-1]], axis=-1)
 
 
-def render(nerf_model, ray_origins, ray_directions, hn=0.0, hf=0.5, nb_bins=192):
+def render(nerf_model, ray_origins, ray_directions, hn=0, hf=0.5, nb_bins=192):
     '''Render image based on camera ray origins and ray directions'''
     # Sample points along rays, linear space between hn and hf
-    # t = tf.cast(tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1]), dtype=tf.dtypes.float32) # expand to match the number of rays
-    t = tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1])# expand to match the number of rays
-
+    t = tf.cast(tf.tile(tf.linspace(hn, hf, nb_bins)[None, :], [ray_origins.shape[0], 1]), dtype=tf.dtypes.float32) # expand to match the number of rays
+    
     # Get lower and upper bounds for each bin
     mid = (t[:, :-1] + t[:, 1:]) / 2.
     lower = tf.concat([t[:, :1], mid], axis=-1)
@@ -107,7 +97,7 @@ def render(nerf_model, ray_origins, ray_directions, hn=0.0, hf=0.5, nb_bins=192)
 
     return c + (1 - tf.expand_dims(weight_sum, -1))
 
-def train(nerf_model, optimizer, data, epochs=int(1e5), hn=0.0, hf=1.0, nb_bins=192, H=400, W=400):
+def train(nerf_model, optimizer, data, epochs=int(1e5), hn=0, hf=1, nb_bins=192, H=400, W=400):
     # Clear log file
     with open('logs/log.txt', 'w') as log_file:
         log_file.write('')
@@ -138,9 +128,42 @@ def train(nerf_model, optimizer, data, epochs=int(1e5), hn=0.0, hf=1.0, nb_bins=
     log_file.close()
     return training_loss
 
+def test(nerf_model, hn, hf, dataset, chunk_size=10, img_index=0, nb_bins=192, H=400, W=400):
+    """
+    Args:
+        hn: near plane distance
+        hf: far plane distance
+        dataset: dataset to render
+        chunk_size (int, optional): chunk size for memory efficiency. Defaults to 10.
+        img_index (int, optional): image index to render. Defaults to 0.
+        nb_bins (int, optional): number of bins for density estimation. Defaults to 192.
+        H (int, optional): image height. Defaults to 400.
+        W (int, optional): image width. Defaults to 400.
+        
+    Returns:
+        None: None
+    """
+    ray_origins = dataset[img_index * H * W: (img_index + 1) * H * W, :3]
+    ray_directions = dataset[img_index * H * W: (img_index + 1) * H * W, 3:6]
+
+    data = [] # list of regenerated pixel values
+    for i in range(int(np.ceil(H / chunk_size))):   # iterate over chunks
+        # Get chunk of rays
+        o = ray_origins[i * W * chunk_size: (i + 1) * W * chunk_size]
+        d = ray_directions[i * W * chunk_size: (i + 1) * W * chunk_size]   
+        generated_px_values = render(nerf_model, ray_origins=o, ray_directions=d, hn=hn, hf=hf, nb_bins=nb_bins)
+        data.append(generated_px_values)
+    img = np.array(data).reshape(H, W, 3)
+
+    plt.figure()
+    # plt.imshow(img)
+    # plt.savefig(f'novel_views/img_{img_index}.png', bbox_inches='tight')
+    plt.imsave(f'novel_views/img_{img_index}.png', img)
+    plt.close()
+
 if __name__ == '__main__':
     # Deine Constants
-    EPOCHS = 100
+    EPOCHS = 5
     BATCH_SIZE = 1024
     LEARNING_RATE = 1e-5
 
@@ -148,14 +171,12 @@ if __name__ == '__main__':
     train_dataset = np.load('parsed_data/training_data.pkl', allow_pickle=True)
     train_dataset = tf.data.Dataset.from_tensor_slices(train_dataset).shuffle(BATCH_SIZE).batch(BATCH_SIZE)
 
-    # test_dataset = np.load('testing_data.pkl', allow_pickle=True)
+    test_dataset = np.load('parsed_data/testing_data.pkl', allow_pickle=True)
     # test_dataset = tf.data.Dataset.from_tensor_slices(test_dataset).shuffle(BATCH_SIZE).batch(BATCH_SIZE)
     
     # Create and train model
     model = NeRF()
-    model = keras.models.load_model('nuthin1.keras', custom_objects={"NeRF": NeRF})
-    print(model.summary())
     # train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
-    train(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
+    test(model,0,1,test_dataset)
 
 
