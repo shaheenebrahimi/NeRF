@@ -1,5 +1,4 @@
 from load_data import *
-# import tensorflow.keras as keras
 import keras
 import tensorflow as tf
 import numpy as np
@@ -7,10 +6,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 # NeRF model
+@keras.saving.register_keras_serializable()
 class NeRF(keras.Model):
-    def __init__(self, embedded_x_dim=10, embedded_d_dim=4):
+    def __init__(self, embedded_x_dim=10, embedded_d_dim=4, *args, **kwargs):
         '''Initialize network'''
-        super(NeRF, self).__init__()
+        super(NeRF, self).__init__(*args, **kwargs)
         self.embedded_x_dim = embedded_x_dim
         self.embedded_d_dim = embedded_d_dim
         self.gamma_x = embedded_x_dim * 3 # 3 dimensional, taylor expansion (sin, cos)
@@ -42,6 +42,16 @@ class NeRF(keras.Model):
             result.append(tf.sin(2**i * pos))
             result.append(tf.cos(2**i * pos))
         return tf.concat(result, axis=-1)
+    
+    def get_config(self):
+        config = super(NeRF, self).get_config()
+        config.update({'embedded_x_dim': self.embedded_x_dim,
+                       'embedded_d_dim': self.embedded_d_dim})
+        return config
+    
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
     
     def call(self, x, d):
         '''Forward propagation call'''
@@ -163,7 +173,7 @@ def test(nerf_model, hn, hf, dataset, chunk_size=10, img_index=0, nb_bins=192, H
 
 if __name__ == '__main__':
     # Deine Constants
-    EPOCHS = 5
+    EPOCHS = 100
     BATCH_SIZE = 1024
     LEARNING_RATE = 1e-5
 
@@ -177,6 +187,10 @@ if __name__ == '__main__':
     # Create and train model
     model = NeRF()
     # train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
+    #model = keras.models.load_model('nuthin1.keras', custom_objects={"NeRF": NeRF})
+    #print(model.summary())
+    # train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
+    #train(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
     test(model,0,1,test_dataset)
 
 
