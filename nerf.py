@@ -66,7 +66,7 @@ class NeRF(keras.Model):
 
 def accumulated_transmittance(alphas):
     '''Compute accumulated transmittance'''
-    transmittance = tf.math.cumprod(alphas, axis=1, exclusive=True)
+    transmittance = tf.math.cumprod(alphas, axis=1, exclusive=False)
     ones = tf.ones([tf.shape(transmittance)[0], 1], dtype = alphas.dtype)
     return tf.concat([ones, transmittance[:, :-1]], axis=-1)
 
@@ -99,7 +99,7 @@ def render(_model, _ray_origins, _ray_directions, hn=0, hf=0.5, nb_bins=192):
     # Compute alpha and weights
     alpha = 1 - tf.exp(-sigma * delta)
     transmittance = accumulated_transmittance(1 - alpha)
-    weights = tf.expand_dims(transmittance, 2) * tf.expand_dims(alpha, 2)
+    weights = tf.expand_dims(transmittance, axis=-1) * tf.expand_dims(alpha, axis=-1)
 
     # Compute final color as weighted sum of colors along each ray
     c = tf.reduce_sum(weights * colors, axis=1)
