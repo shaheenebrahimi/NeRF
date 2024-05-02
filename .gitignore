@@ -4,6 +4,8 @@ parsed_data/
 training_data.pkl
 testing_data.pkl
 log.txt
+log1.txt
+nuthin1.keras
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

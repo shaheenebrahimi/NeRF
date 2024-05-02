@@ -129,18 +129,18 @@ def fit(_model, _optimizer, _train_data, _test_data, epochs=int(1e5), hn=0, hf=1
             _optimizer.apply_gradients(zip(grads, _model.trainable_weights))
 
             # Output loss to logfile
-            with open('log.txt', 'a') as log_file:
+            with open('log.txt', 'a') as log_file: 
                 log_file.write(str(loss.numpy()) + '\n')
         
         # Save model and test every 10 epochs
         training_loss.append(loss)
-        _model.save('nuthin.keras')
+        _model.save('nuthin_new.keras') 
         if i % 10 == 0: gen_image(_model, _test_data, version=i, hn=hn, hf=hf, nb_bins=nb_bins, H=H, W=W, chunk_size=5)
 
     log_file.close()
     return training_loss
 
-def gen_image(_model, _dataset, version=0, hn=0, hf=1, chunk_size=10, img_index=0, nb_bins=192, H=400, W=400):
+def gen_image(_model, _dataset, version=0, hn=0, hf=1, chunk_size=5, img_index=0, nb_bins=192, H=400, W=400):
     """
     Args:
         hn: near plane distance
@@ -163,14 +163,16 @@ def gen_image(_model, _dataset, version=0, hn=0, hf=1, chunk_size=10, img_index=
         # Get chunk of rays
         o = ray_origins[i * W * chunk_size: (i + 1) * W * chunk_size]
         d = ray_directions[i * W * chunk_size: (i + 1) * W * chunk_size]   
-        generated_px_values = render(_model, ray_origins=o, ray_directions=d, hn=hn, hf=hf, nb_bins=nb_bins)
+        generated_px_values = render(_model, _ray_origins=o, _ray_directions=d, hn=hn, hf=hf, nb_bins=nb_bins)
         data.append(generated_px_values)
     img = np.array(data).reshape(H, W, 3)
 
     plt.figure()
     # plt.imshow(img)
     # plt.savefig(f'novel_views/img_{img_index}.png', bbox_inches='tight')
-    plt.imsave(f'novel_views/img_{img_index}_{version}.png', img)
+    img = np.clip(img,0,1)
+    # plt.imsave(f'novel_views/img_{img_index}_{version}.png', img)
+    plt.imsave(f'novel_views/img_{img_index}_{version+34}_newparam.png', img) # Remove at some point
     plt.close()
 
 if __name__ == '__main__':
@@ -188,12 +190,8 @@ if __name__ == '__main__':
     
     # Create and train model
     model = NeRF()
-    fit(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, test_dataset)
-    # train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
-    #model = keras.models.load_model('nuthin1.keras', custom_objects={"NeRF": NeRF})
-    #print(model.summary())
-    # train(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
-    #train(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, epochs=EPOCHS)
-    # test(model,0,1,test_dataset)
+    #fit(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, test_dataset)
 
+    model = keras.models.load_model('nuthin_new.keras', custom_objects={"NeRF": NeRF}) 
+    fit(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, test_dataset, epochs=EPOCHS, hn=2, hf=6)
 
