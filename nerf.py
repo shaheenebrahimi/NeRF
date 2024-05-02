@@ -129,7 +129,7 @@ def fit(_model, _optimizer, _train_data, _test_data, epochs=int(1e5), hn=0, hf=1
             _optimizer.apply_gradients(zip(grads, _model.trainable_weights))
 
             # Output loss to logfile
-            with open('log.txt', 'a') as log_file: 
+            with open('logs/log.txt', 'a') as log_file: 
                 log_file.write(str(loss.numpy()) + '\n')
         
         # Save model and test every 10 epochs
