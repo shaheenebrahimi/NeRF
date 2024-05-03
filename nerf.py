@@ -171,12 +171,11 @@ def gen_image(_model, _dataset, version=0, hn=0, hf=1, chunk_size=5, img_index=0
     # plt.imshow(img)
     # plt.savefig(f'novel_views/img_{img_index}.png', bbox_inches='tight')
     img = np.clip(img,0,1)
-    # plt.imsave(f'novel_views/img_{img_index}_{version}.png', img)
-    plt.imsave(f'novel_views/img_{img_index}_{version+34}_newparam.png', img) # Remove at some point
+    plt.imsave(f'novel_views/img_{img_index}_{version}.png', img)
     plt.close()
 
 if __name__ == '__main__':
-    # Deine Constants
+    # Define Constants
     EPOCHS = 100
     BATCH_SIZE = 1024
     LEARNING_RATE = 1e-5
@@ -190,8 +189,7 @@ if __name__ == '__main__':
     
     # Create and train model
     model = NeRF()
-    #fit(model, tf.optimizers.legacy.Adam(LEARNING_RATE), train_dataset, test_dataset)
-
+    
     model = keras.models.load_model('nuthin_new.keras', custom_objects={"NeRF": NeRF}) 
-    fit(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, test_dataset, epochs=EPOCHS, hn=2, hf=6)
-
+    #fit(model, keras.optimizers.Adam(LEARNING_RATE), train_dataset, test_dataset, epochs=EPOCHS, hn=2, hf=6)
+    gen_image(model, test_dataset, version=40, hn=2, hf=6)
